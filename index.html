@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>立方体の切断面を調べよう</title>
+
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    padding: 16px;
+    background: #f4f7fb;
+    color: #243044;
+    font-family: sans-serif;
+  }
+
+  main {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+  }
+
+  h2 {
+    font-size: 1.1rem;
+    margin: 20px 0 8px;
+  }
+
+  p {
+    line-height: 1.7;
+  }
+
+  .box {
+    padding: 14px;
+    background: white;
+    border: 1px solid #dce3ed;
+    border-radius: 12px;
+  }
+
+  #controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 14px 0;
+  }
+
+  .control {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+  }
+
+  select {
+    width: 100%;
+    min-height: 40px;
+    padding: 6px;
+    font-size: 16px;
+  }
+
+  #pointCount {
+    max-width: 180px;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .slider-row span {
+    min-width: 1em;
+    text-align: center;
+    font-weight: bold;
+  }
+
+  input[type="range"] {
+    flex: 1;
+    min-width: 0;
+    height: 36px;
+  }
+
+  .position {
+    margin-top: 6px;
+    font-size: 0.9rem;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    background: white;
+    border: 1px solid #dce3ed;
+    border-radius: 12px;
+  }
+
+  #view {
+    height: 420px;
+    touch-action: none;
+  }
+
+  #sectionView {
+    height: 280px;
+  }
+
+  #result {
+    margin-top: 12px;
+    line-height: 1.7;
+  }
+
+  .small {
+    font-size: 0.9rem;
+    color: #526174;
+  }
+
+  @media (max-width: 500px) {
+    #view {
+      height: 340px;
+    }
+
+    #sectionView {
+      height: 240px;
+    }
+  }
+</style>
+</head>
+
+<body>
+<main>
+  <h1>立方体の切断面を調べよう</h1>
+
+  <p>
+    点の数と、点を置く辺を選んでください。
+    バーや立体図の点を動かして位置を調整できます。<br>
+    立体図の点は、頂点につながる別の辺へ続けて動かせます。
+  </p>
+
+  <div class="box">
+    <label for="pointCount">切断面が通る点の数</label>
+
+    <!-- JavaScriptが動かなくても選択肢自体は表示される -->
+    <select id="pointCount">
+      <option value="3">3個</option>
+      <option value="4">4個</option>
+      <option value="5">5個</option>
+      <option value="6">6個</option>
+      <option value="7">7個</option>
+      <option value="8">8個</option>
+      <option value="9">9個</option>
+      <option value="10">10個</option>
+      <option value="11">11個</option>
+      <option value="12">12個</option>
+    </select>
+  </div>
+
+  <div id="controls"></div>
+
+  <h2>立方体と切断面</h2>
+
+  <canvas
+    id="view"
+    aria-label="立方体と切断面。指定した点をドラッグして動かせます。"
+  >
+    このブラウザは図の表示に対応していません。
+  </canvas>
+
+  <div id="result" class="box" role="status">
+    読み込み中です。表示されない場合は、ブラウザで開き直してください。
+  </div>
+
+  <h2>断面を正面から見た図</h2>
+
+  <p class="small">
+    立方体の頂点と重なる断面の頂点は A〜H、
+    それ以外の頂点は I、J、K… で表示します。
+    点を動かすと I 以降の名前は付け直されることがあります。
+  </p>
+
+  <canvas
+    id="sectionView"
+    aria-label="切断面を正面から見た図"
+  >
+    このブラウザは図の表示に対応していません。
+  </canvas>
+
+  <noscript>
+    <p class="box">
+      このアプリにはJavaScriptが必要です。
+      ファイルのプレビューではなく、ブラウザで開いてください。
+    </p>
+  </noscript>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var view = document.getElementById("view");
+  var sectionView = document.getElementById("sectionView");
+  var controls = document.getElementById("controls");
+  var result = document.getElementById("result");
+  var pointCount = document.getElementById("pointCount");
+
+  var ctx = view.getContext("2d");
+  var sectionCtx = sectionView.getContext("2d");
+
+  if (!ctx || !sectionCtx) {
+    result.textContent =
+      "このブラウザでは図を表示できません。別のブラウザでお試しください。";
+    return;
+  }
+
+  var vertices = {
+    A: [0, 0, 0],
+    B: [1, 0, 0],
+    C: [1, 1, 0],
+    D: [0, 1, 0],
+    E: [0, 0, 1],
+    F: [1, 0, 1],
+    G: [1, 1, 1],
+    H: [0, 1, 1]
+  };
+
+  var vertexNames = ["A", "B", "C", "D", "E", "F", "G", "H"];
+
+  var edgeNames = [
+    ["A", "B"], ["B", "C"], ["C", "D"], ["D", "A"],
+    ["E", "F"], ["F", "G"], ["G", "H"], ["H", "E"],
+    ["A", "E"], ["B", "F"], ["C", "G"], ["D", "H"]
+  ];
+
+  var edges = [];
+  var i;
+
+  for (i = 0; i < edgeNames.length; i++) {
+    edges.push({
+      start: edgeNames[i][0],
+      end: edgeNames[i][1],
+      a: vertices[edgeNames[i][0]],
+      b: vertices[edgeNames[i][1]]
+    });
+  }
+
+  var colors = [
+    "#e5484d", "#2563eb", "#16a34a", "#9333ea",
+    "#db2777", "#0891b2", "#c2410c", "#4f46e5",
+    "#15803d", "#be123c", "#0f766e", "#7e22ce"
+  ];
+
+  var defaultEdges = [0, 3, 8];
+  var settings = [];
+  var drag = null;
+  var lastTouchTime = 0;
+
+  var yaw = -0.65;
+  var tilt = 0.55;
+
+  function add(a, b) {
+    return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  }
+
+  function sub(a, b) {
+    return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  }
+
+  function mul(a, n) {
+    return [a[0] * n, a[1] * n, a[2] * n];
+  }
+
+  function dot(a, b) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  function cross(a, b) {
+    return [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0]
+    ];
+  }
+
+  function length(a) {
+    return Math.sqrt(dot(a, a));
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function createSetting(index) {
+    return {
+      label: "P" + (index + 1),
+      edge: index < 3 ? defaultEdges[index] : index % edges.length,
+      position: 0.5,
+      color: colors[index],
+      refreshControl: null
+    };
+  }
+
+  function selectedPoint(setting) {
+    var edge = edges[setting.edge];
+    return add(edge.a, mul(sub(edge.b, edge.a), setting.position));
+  }
+
+  function setPointCount(count) {
+    while (settings.length < count) {
+      settings.push(createSetting(settings.length));
+    }
+
+    if (settings.length > count) {
+      settings.length = count;
+    }
+
+    buildControls();
+    draw();
+  }
+
+  function buildControls() {
+    controls.innerHTML = "";
+
+    for (var index = 0; index < settings.length; index++) {
+      createControl(settings[index], index);
+    }
+  }
+
+  function createControl(setting, index) {
+    var box = document.createElement("div");
+    box.className = "box control";
+
+    var label = document.createElement("label");
+    label.setAttribute("for", "edge-" + index);
+    label.textContent = "点" + setting.label + "を置く辺";
+    label.style.color = setting.color;
+
+    var select = document.createElement("select");
+    select.id = "edge-" + index;
+
+    for (var j = 0; j < edges.length; j++) {
+      var option = document.createElement("option");
+      option.value = String(j);
+      option.textContent = "辺" + edges[j].start + edges[j].end;
+      select.appendChild(option);
+    }
+
+    var row = document.createElement("div");
+    row.className = "slider-row";
+
+    var startLabel = document.createElement("span");
+    var endLabel = document.createElement("span");
+
+    var slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "100";
+    slider.step = "1";
+    slider.setAttribute(
+      "aria-label",
+      "点" + setting.label + "の辺上の位置"
+    );
+
+    var positionText = document.createElement("div");
+    positionText.className = "position";
+
+    setting.refreshControl = function () {
+      var edge = edges[setting.edge];
+      var percent = Math.round(setting.position * 100);
+
+      select.value = String(setting.edge);
+      slider.value = String(percent);
+      startLabel.textContent = edge.start;
+      endLabel.textContent = edge.end;
+
+      if (percent === 0) {
+        positionText.textContent =
+          "頂点" + edge.start + "と重なっています";
+      } else if (percent === 100) {
+        positionText.textContent =
+          "頂点" + edge.end + "と重なっています";
+      } else {
+        positionText.textContent =
+          "頂点" + edge.start + "から頂点" + edge.end +
+          "へ " + percent + "%";
+      }
+    };
+
+    select.addEventListener("change", function () {
+      setting.edge = Number(select.value);
+      setting.refreshControl();
+      draw();
+    });
+
+    slider.addEventListener("input", function () {
+      setting.position = Number(slider.value) / 100;
+      setting.refreshControl();
+      draw();
+    });
+
+    // 一部のブラウザではchangeでも更新する。
+    slider.addEventListener("change", function () {
+      setting.position = Number(slider.value) / 100;
+      setting.refreshControl();
+      draw();
+    });
+
+    row.appendChild(startLabel);
+    row.appendChild(slider);
+    row.appendChild(endLabel);
+
+    box.appendChild(label);
+    box.appendChild(select);
+    box.appendChild(row);
+    box.appendChild(positionText);
+    controls.appendChild(box);
+
+    setting.refreshControl();
+  }
+
+  function findPlane(points) {
+    var bestNormal = null;
+    var bestOrigin = null;
+    var bestLength = 0;
+
+    for (var a = 0; a < points.length - 2; a++) {
+      for (var b = a + 1; b < points.length - 1; b++) {
+        for (var c = b + 1; c < points.length; c++) {
+          var normal = cross(
+            sub(points[b], points[a]),
+            sub(points[c], points[a])
+          );
+
+          var normalLength = length(normal);
+
+          if (normalLength > bestLength) {
+            bestLength = normalLength;
+            bestNormal = normal;
+            bestOrigin = points[a];
+          }
+        }
+      }
+    }
+
+    if (bestLength < 1e-8) {
+      return { error: "collinear" };
+    }
+
+    var unitNormal = mul(bestNormal, 1 / bestLength);
+
+    for (var j = 0; j < points.length; j++) {
+      var distance = dot(unitNormal, sub(points[j], bestOrigin));
+
+      if (Math.abs(distance) >= 1e-7) {
+        return { error: "notCoplanar" };
+      }
+    }
+
+    return {
+      origin: bestOrigin,
+      normal: unitNormal
+    };
+  }
+
+  function intersectionsWithCube(plane) {
+    var points = [];
+
+    function addUnique(point) {
+      for (var j = 0; j < points.length; j++) {
+        if (length(sub(point, points[j])) < 1e-7) {
+          return;
+        }
+      }
+
+      points.push(point);
+    }
+
+    for (var e = 0; e < edges.length; e++) {
+      var edge = edges[e];
+      var direction = sub(edge.b, edge.a);
+      var denominator = dot(plane.normal, direction);
+      var numerator = dot(plane.normal, sub(plane.origin, edge.a));
+
+      if (Math.abs(denominator) < 1e-9) {
+        if (Math.abs(numerator) < 1e-9) {
+          addUnique(edge.a);
+          addUnique(edge.b);
+        }
+      } else {
+        var t = numerator / denominator;
+
+        if (t >= -1e-9 && t <= 1 + 1e-9) {
+          addUnique(add(edge.a, mul(direction, clamp(t, 0, 1))));
+        }
+      }
+    }
+
+    if (points.length < 3) {
+      return null;
+    }
+
+    var center = [0, 0, 0];
+
+    for (var j = 0; j < points.length; j++) {
+      center = add(center, points[j]);
+    }
+
+    center = mul(center, 1 / points.length);
+
+    var first = sub(points[0], center);
+    var firstLength = length(first);
+
+    if (firstLength < 1e-9) {
+      return null;
+    }
+
+    var u = mul(first, 1 / firstLength);
+    var v = cross(plane.normal, u);
+
+    points.sort(function (p, q) {
+      var rp = sub(p, center);
+      var rq = sub(q, center);
+
+      return Math.atan2(dot(rp, v), dot(rp, u)) -
+             Math.atan2(dot(rq, v), dot(rq, u));
+    });
+
+    return points;
+  }
+
+  function edgeIndexForPoint(point) {
+    for (var j = 0; j < edges.length; j++) {
+      var edge = edges[j];
+      var direction = sub(edge.b, edge.a);
+      var relative = sub(point, edge.a);
+      var t = dot(relative, direction) / dot(direction, direction);
+
+      if (t < -1e-7 || t > 1 + 1e-7) {
+        continue;
+      }
+
+      var nearest = add(
+        edge.a,
+        mul(direction, clamp(t, 0, 1))
+      );
+
+      if (length(sub(point, nearest)) < 1e-7) {
+        return j;
+      }
+    }
+
+    return edges.length;
+  }
+
+  function nameSectionVertices(polygon) {
+    var named = [];
+    var unnamed = [];
+
+    for (var j = 0; j < polygon.length; j++) {
+      var name = null;
+
+      for (var k = 0; k < vertexNames.length; k++) {
+        var vertexName = vertexNames[k];
+
+        if (length(sub(polygon[j], vertices[vertexName])) < 1e-7) {
+          name = vertexName;
+          break;
+        }
+      }
+
+      var item = {
+        point: polygon[j],
+        name: name,
+        edgeIndex: edgeIndexForPoint(polygon[j])
+      };
+
+      named.push(item);
+
+      if (name === null) {
+        unnamed.push(item);
+      }
+    }
+
+    unnamed.sort(function (a, b) {
+      return a.edgeIndex - b.edgeIndex;
+    });
+
+    for (var n = 0; n < unnamed.length; n++) {
+      unnamed[n].name = String.fromCharCode(73 + n);
+    }
+
+    return named;
+  }
+
+  function project(point, width, height) {
+    var x = point[0] - 0.5;
+    var y = point[1] - 0.5;
+    var z = point[2] - 0.5;
+
+    var horizontal =
+      x * Math.cos(yaw) - y * Math.sin(yaw);
+
+    var depth =
+      x * Math.sin(yaw) + y * Math.cos(yaw);
+
+    var vertical =
+      z * Math.cos(tilt) - depth * Math.sin(tilt);
+
+    var scale = Math.min(width * 0.38, height * 0.42);
+
+    return [
+      width / 2 + horizontal * scale,
+      height / 2 - vertical * scale
+    ];
+  }
+
+  function prepareCanvas(target, context) {
+    var width = target.clientWidth;
+    var height = target.clientHeight;
+
+    if (!width || !height) {
+      return null;
+    }
+
+    var dpr = window.devicePixelRatio || 1;
+    var pixelWidth = Math.round(width * dpr);
+    var pixelHeight = Math.round(height * dpr);
+
+    if (target.width !== pixelWidth || target.height !== pixelHeight) {
+      target.width = pixelWidth;
+      target.height = pixelHeight;
+    }
+
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
+
+    return {
+      width: width,
+      height: height
+    };
+  }
+
+  function drawSection(named, plane) {
+    var size = prepareCanvas(sectionView, sectionCtx);
+
+    if (!size) return;
+
+    var width = size.width;
+    var height = size.height;
+
+    if (!named || !plane || plane.error) {
+      sectionCtx.font = "15px sans-serif";
+      sectionCtx.fillStyle = "#64748b";
+      sectionCtx.textAlign = "center";
+      sectionCtx.textBaseline = "middle";
+      sectionCtx.fillText(
+        "切断面を決めると、ここに断面が表示されます。",
+        width / 2,
+        height / 2,
+        width - 20
+      );
+      return;
+    }
+
+    var origin = named[0].point;
+    var firstSide = sub(named[1].point, origin);
+    var sideLength = length(firstSide);
+
+    if (sideLength < 1e-9) return;
+
+    var u = mul(firstSide, 1 / sideLength);
+    var v = cross(plane.normal, u);
+    var flat = [];
+
+    var minX = Infinity;
+    var maxX = -Infinity;
+    var minY = Infinity;
+    var maxY = -Infinity;
+
+    for (var j = 0; j < named.length; j++) {
+      var relative = sub(named[j].point, origin);
+      var x = dot(relative, u);
+      var y = dot(relative, v);
+
+      flat.push([x, y]);
+
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+
+    var padding = 40;
+    var availableWidth = Math.max(1, width - padding * 2);
+    var availableHeight = Math.max(1, height - padding * 2);
+
+    var scale = Math.min(
+      availableWidth / Math.max(maxX - minX, 1e-9),
+      availableHeight / Math.max(maxY - minY, 1e-9)
+    );
+
+    var centerX = (minX + maxX) / 2;
+    var centerY = (minY + maxY) / 2;
+    var screen = [];
+
+    for (var k = 0; k < flat.length; k++) {
+      screen.push([
+        width / 2 + (flat[k][0] - centerX) * scale,
+        height / 2 - (flat[k][1] - centerY) * scale
+      ]);
+    }
+
+    sectionCtx.beginPath();
+    sectionCtx.moveTo(screen[0][0], screen[0][1]);
+
+    for (var p = 1; p < screen.length; p++) {
+      sectionCtx.lineTo(screen[p][0], screen[p][1]);
+    }
+
+    sectionCtx.closePath();
+    sectionCtx.fillStyle = "rgba(245, 158, 11, 0.48)";
+    sectionCtx.fill();
+    sectionCtx.strokeStyle = "#b45309";
+    sectionCtx.lineWidth = 3;
+    sectionCtx.stroke();
+
+    var cx = 0;
+    var cy = 0;
+
+    for (var q = 0; q < screen.length; q++) {
+      cx += screen[q][0];
+      cy += screen[q][1];
+    }
+
+    cx /= screen.length;
+    cy /= screen.length;
+
+    for (var n = 0; n < screen.length; n++) {
+      var sx = screen[n][0];
+      var sy = screen[n][1];
+
+      sectionCtx.beginPath();
+      sectionCtx.arc(sx, sy, 4, 0, Math.PI * 2);
+      sectionCtx.fillStyle = "#92400e";
+      sectionCtx.fill();
+
+      var dx = sx - cx;
+      var dy = sy - cy;
+      var distance = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      var labelX = sx + dx / distance * 18;
+      var labelY = sy + dy / distance * 18;
+
+      sectionCtx.font = "bold 17px sans-serif";
+      sectionCtx.textAlign = "center";
+      sectionCtx.textBaseline = "middle";
+      sectionCtx.lineWidth = 4;
+      sectionCtx.strokeStyle = "white";
+      sectionCtx.strokeText(named[n].name, labelX, labelY);
+      sectionCtx.fillStyle = "#92400e";
+      sectionCtx.fillText(named[n].name, labelX, labelY);
+    }
+  }
+
+  function draw() {
+    var size = prepareCanvas(view, ctx);
+
+    if (!size) return;
+
+    var width = size.width;
+    var height = size.height;
+
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = "#8794a7";
+
+    for (var e = 0; e < edges.length; e++) {
+      var start = project(edges[e].a, width, height);
+      var end = project(edges[e].b, width, height);
+
+      ctx.beginPath();
+      ctx.moveTo(start[0], start[1]);
+      ctx.lineTo(end[0], end[1]);
+      ctx.stroke();
+    }
+
+    var points = [];
+
+    for (var j = 0; j < settings.length; j++) {
+      points.push(selectedPoint(settings[j]));
+    }
+
+    var plane = findPlane(points);
+    var polygon = null;
+    var named = null;
+
+    if (plane.error === "collinear") {
+      result.textContent =
+        "点が重なっているか、すべての点が一直線上にあるため、" +
+        "切断面を一つに決められません。";
+    } else if (plane.error === "notCoplanar") {
+      result.textContent =
+        "指定した点がすべて同じ平面上にありません。" +
+        "点の位置を変えてください。";
+    } else {
+      polygon = intersectionsWithCube(plane);
+
+      if (polygon) {
+        named = nameSectionVertices(polygon);
+
+        ctx.beginPath();
+
+        for (var p = 0; p < polygon.length; p++) {
+          var screenPoint = project(polygon[p], width, height);
+
+          if (p === 0) {
+            ctx.moveTo(screenPoint[0], screenPoint[1]);
+          } else {
+            ctx.lineTo(screenPoint[0], screenPoint[1]);
+          }
+        }
+
+        ctx.closePath();
+        ctx.fillStyle = "rgba(245, 158, 11, 0.48)";
+        ctx.fill();
+        ctx.strokeStyle = "#b45309";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        var shapeNames = {
+          3: "三角形",
+          4: "四角形",
+          5: "五角形",
+          6: "六角形"
+        };
+
+        var shapeName =
+          shapeNames[polygon.length] || polygon.length + "角形";
+
+        var names = [];
+
+        for (var n = 0; n < named.length; n++) {
+          names.push(named[n].name);
+        }
+
+        result.textContent =
+          "断面は" + shapeName + "です。頂点は " +
+          names.join("・") + " です。";
+      } else {
+        result.textContent =
+          "断面を多角形として表示できません。点の位置を変えてください。";
+      }
+    }
+
+    // 立方体の頂点名 A〜H
+    for (var v = 0; v < vertexNames.length; v++) {
+      var vertexName = vertexNames[v];
+      var vertexPoint = project(vertices[vertexName], width, height);
+
+      ctx.beginPath();
+      ctx.arc(vertexPoint[0], vertexPoint[1], 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#475569";
+      ctx.fill();
+
+      ctx.font = "bold 15px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = "#475569";
+      ctx.fillText(vertexName, vertexPoint[0] - 14, vertexPoint[1] - 10);
+    }
+
+    // 新しく付けた断面の頂点名
+    if (named) {
+      for (var m = 0; m < named.length; m++) {
+        if (vertices[named[m].name]) continue;
+
+        var namedPoint = project(named[m].point, width, height);
+
+        ctx.beginPath();
+        ctx.arc(namedPoint[0], namedPoint[1], 4, 0, Math.PI * 2);
+        ctx.fillStyle = "#92400e";
+        ctx.fill();
+
+        ctx.font = "bold 16px sans-serif";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "alphabetic";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "white";
+        ctx.strokeText(
+          named[m].name,
+          namedPoint[0] - 9,
+          namedPoint[1] + 17
+        );
+        ctx.fillStyle = "#92400e";
+        ctx.fillText(
+          named[m].name,
+          namedPoint[0] - 9,
+          namedPoint[1] + 17
+        );
+      }
+    }
+
+    // 操作する点 P1、P2…
+    for (var s = 0; s < settings.length; s++) {
+      var point = project(points[s], width, height);
+
+      ctx.beginPath();
+      ctx.arc(point[0], point[1], 6, 0, Math.PI * 2);
+      ctx.fillStyle = settings[s].color;
+      ctx.fill();
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.font = "bold 16px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = settings[s].color;
+      ctx.fillText(settings[s].label, point[0] + 9, point[1] - 9);
+    }
+
+    drawSection(named, plane);
+  }
+
+  function positionInCanvas(clientX, clientY) {
+    var rect = view.getBoundingClientRect();
+
+    return [
+      clientX - rect.left - view.clientLeft,
+      clientY - rect.top - view.clientTop
+    ];
+  }
+
+  function findPointAt(x, y) {
+    var nearest = null;
+    var nearestDistance = 24;
+
+    for (var j = settings.length - 1; j >= 0; j--) {
+      var point = project(
+        selectedPoint(settings[j]),
+        view.clientWidth,
+        view.clientHeight
+      );
+
+      var dx = x - point[0];
+      var dy = y - point[1];
+      var distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = settings[j];
+      }
+    }
+
+    return nearest;
+  }
+
+  function nearestPositionOnEdge(edgeIndex, x, y) {
+    var edge = edges[edgeIndex];
+    var a = project(edge.a, view.clientWidth, view.clientHeight);
+    var b = project(edge.b, view.clientWidth, view.clientHeight);
+
+    var dx = b[0] - a[0];
+    var dy = b[1] - a[1];
+    var lengthSquared = dx * dx + dy * dy;
+
+    if (lengthSquared < 1e-8) return null;
+
+    var rawPosition =
+      ((x - a[0]) * dx + (y - a[1]) * dy) / lengthSquared;
+
+    var position = clamp(rawPosition, 0, 1);
+    var nearestX = a[0] + dx * position;
+    var nearestY = a[1] + dy * position;
+
+    var px = x - nearestX;
+    var py = y - nearestY;
+
+    return {
+      edgeIndex: edgeIndex,
+      position: position,
+      distance: Math.sqrt(px * px + py * py)
+    };
+  }
+
+  function chooseEdgeForDrag(setting, x, y) {
+    var currentEdge = edges[setting.edge];
+    var current = nearestPositionOnEdge(setting.edge, x, y);
+
+    if (!current) return null;
+
+    var nearbyVertices = [];
+
+    if (setting.position <= 0.08 || current.position <= 0.08) {
+      nearbyVertices.push(currentEdge.start);
+    }
+
+    if (setting.position >= 0.92 || current.position >= 0.92) {
+      nearbyVertices.push(currentEdge.end);
+    }
+
+    var best = current;
+
+    for (var j = 0; j < edges.length; j++) {
+      if (j === setting.edge) continue;
+
+      var connected = false;
+
+      for (var k = 0; k < nearbyVertices.length; k++) {
+        if (
+          edges[j].start === nearbyVertices[k] ||
+          edges[j].end === nearbyVertices[k]
+        ) {
+          connected = true;
+        }
+      }
+
+      if (!connected) continue;
+
+      var candidate = nearestPositionOnEdge(j, x, y);
+
+      if (candidate && candidate.distance + 2 < best.distance) {
+        best = candidate;
+      }
+    }
+
+    return best;
+  }
+
+  function startDrag(clientX, clientY, touchId) {
+    var position = positionInCanvas(clientX, clientY);
+    var setting = findPointAt(position[0], position[1]);
+
+    if (!setting) return false;
+
+    var point = project(
+      selectedPoint(setting),
+      view.clientWidth,
+      view.clientHeight
+    );
+
+    drag = {
+      setting: setting,
+      touchId: touchId,
+      offsetX: position[0] - point[0],
+      offsetY: position[1] - point[1]
+    };
+
+    return true;
+  }
+
+  function moveDrag(clientX, clientY) {
+    if (!drag) return;
+
+    var setting = drag.setting;
+
+    if (settings.indexOf(setting) === -1) {
+      drag = null;
+      return;
+    }
+
+    var position = positionInCanvas(clientX, clientY);
+
+    var choice = chooseEdgeForDrag(
+      setting,
+      position[0] - drag.offsetX,
+      position[1] - drag.offsetY
+    );
+
+    if (!choice) return;
+
+    setting.edge = choice.edgeIndex;
+    setting.position = Math.round(choice.position * 100) / 100;
+    setting.refreshControl();
+    draw();
+  }
+
+  function findTouch(touches, identifier) {
+    for (var j = 0; j < touches.length; j++) {
+      if (touches[j].identifier === identifier) {
+        return touches[j];
+      }
+    }
+
+    return null;
+  }
+
+  // タッチ操作
+  view.addEventListener("touchstart", function (event) {
+    if (drag || event.changedTouches.length === 0) return;
+
+    var touch = event.changedTouches[0];
+    lastTouchTime = new Date().getTime();
+
+    if (startDrag(touch.clientX, touch.clientY, touch.identifier)) {
+      event.preventDefault();
+    }
+  }, false);
+
+  view.addEventListener("touchmove", function (event) {
+    if (!drag || drag.touchId === null) return;
+
+    var touch = findTouch(event.touches, drag.touchId);
+
+    if (touch) {
+      event.preventDefault();
+      moveDrag(touch.clientX, touch.clientY);
+    }
+  }, false);
+
+  view.addEventListener("touchend", function (event) {
+    if (!drag || drag.touchId === null) return;
+
+    if (findTouch(event.changedTouches, drag.touchId)) {
+      drag = null;
+      lastTouchTime = new Date().getTime();
+    }
+  }, false);
+
+  view.addEventListener("touchcancel", function () {
+    drag = null;
+    lastTouchTime = new Date().getTime();
+  }, false);
+
+  // マウス操作
+  view.addEventListener("mousedown", function (event) {
+    if (new Date().getTime() - lastTouchTime < 700) return;
+    if (event.button !== 0 || drag) return;
+
+    if (startDrag(event.clientX, event.clientY, null)) {
+      event.preventDefault();
+    }
+  });
+
+  document.addEventListener("mousemove", function (event) {
+    if (drag && drag.touchId === null) {
+      moveDrag(event.clientX, event.clientY);
+    }
+  });
+
+  document.addEventListener("mouseup", function () {
+    if (drag && drag.touchId === null) {
+      drag = null;
+    }
+  });
+
+  pointCount.addEventListener("change", function () {
+    drag = null;
+    setPointCount(Number(pointCount.value));
+  });
+
+  window.addEventListener("resize", draw);
+
+  try {
+    setPointCount(3);
+  } catch (error) {
+    result.textContent =
+      "アプリを読み込めませんでした。ブラウザを変更するか、" +
+      "端末の管理者に確認してください。";
+  }
+}());
+</script>
+</body>
+</html>
